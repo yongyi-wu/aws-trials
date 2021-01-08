@@ -40,6 +40,7 @@ from mxnet import use_np
 from mxnet import np, npx
 from mxnet.gluon import HybridBlock, Parameter, nn
 from ..base import get_model_zoo_home_dir
+from ..data import Vocab
 from ..data.tokenizers import SentencepieceTokenizer
 from ..layer import get_activation
 from ..utils.config import CfgNode as CN
@@ -99,9 +100,9 @@ class T5LayerNorm(HybridBlock):
 class T5DenseReluDense(HybridBlock): 
     def __init__(self, d_model, d_ff, dropout_prob): 
         super.__init__()
-        self.wi = nn.Dense(d_ff, use_bias=False)
+        self.wi = nn.Dense(units=d_ff, in_units=d_model, use_bias=False)
         self.relu = get_activation('relu')
-        self.wo = nn.Dense(d_model, use_bias=False)
+        self.wo = nn.Dense(units=d_model, in_units=d_ff, use_bias=False)
         self.dropout = nn.Dropout(dropout_prob)
 
     def forward(self, x): 
@@ -115,9 +116,9 @@ class T5DenseReluDense(HybridBlock):
 @use_np
 class T5DenseGatedGeluDense(HybridBlock): 
     def __init__(self, d_model, d_ff, dropout_prob): 
-        self.wi_0 = nn.Dense(d_ff, use_bias=False)
-        self.wi_1 = nn.Dense(d_ff, use_bias=False)
-        self.wo = nn.Dense(d_model, use_bias=False)
+        self.wi_0 = nn.Dense(units=d_ff, in_units=d_model, use_bias=False)
+        self.wi_1 = nn.Dense(units=d_ff, in_units=d_model, use_bias=False)
+        self.wo = nn.Dense(units=d_model, in_units=d_ff, use_bias=False)
         self.gelu = get_activation('gelu')
         self.dropout = nn.Dropout(dropout_prob)
 
@@ -169,6 +170,9 @@ class T5Block(HybridBlock):
     pass
 
 
+class T5Model(HybridBlock): 
+    pass
+
 
 def list_pretrained_t5(): 
     return sorted(list(PRETRAINED_URL.keys()))
@@ -180,6 +184,7 @@ def get_pretrained_t5(model_name: str = 't5-base',
                       load_lm: bool = False)\
     -> Tuple[CN, SentencepieceTokenizer, str, str]
     """
+    TBD
     """
     assert model_name in PRETRAINED_URL, '{} is not found. All available are {}'.format(
         model_name, list_pretrained_t5())
@@ -188,8 +193,23 @@ def get_pretrained_t5(model_name: str = 't5-base',
         cfg = cfg_path
     else:
         cfg = None
+
     # merges_path = PRETRAINED_URL[model_name]['merges']
     vocab_path = PRETRAINED_URL[model_name]['vocab']
     params_path = PRETRAINED_URL[model_name]['params']
     # lm_params_path = PRETRAINED_URL[model_name]['lm_params']
 
+    # manually overwrite/add special tokens
+    extra_ids = 100
+    special_tokens = {'extra_{}_token'.format(i): '<extra_id_{}>'.format(i) for i in range(extra_ids)}
+    special_tokens['eos_token'] = '</s>'
+    special_tokens['unk_token'] = '<unk>'
+    special_tokens['pad_token'] = '<pad>'
+    tokenizer = SentencepieceTokenizer(
+        local_paths['spm_model'],
+        vocab=Vocab(local_paths['vocab'], **special_tokens), 
+        lowercase=do_lower
+    )
+    if cfg is None: 
+        cfg = T5Model.get_cfg().clone_merge(local_paths['cfg'])
+    return cfg, tokenizer, 
